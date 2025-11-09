@@ -1,0 +1,90 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+
+
+df = pd.read_csv(r"uber.csv")
+print(df.head())
+print(df.info())
+
+Data Preprocessing
+df = df.dropna()
+
+df = df[(df['fare_amount'] > 0) & (df['fare_amount'] < 100)]
+df = df[(df['passenger_count'] > 0) & (df['passenger_count'] <= 6)]
+
+df['pickup_datetime'] = pd.to_datetime(df['pickup_datetime'], errors='coerce')
+df = df.dropna(subset=['pickup_datetime'])
+df['hour'] = df['pickup_datetime'].dt.hour
+df['day'] = df['pickup_datetime'].dt.day
+df['month'] = df['pickup_datetime'].dt.month
+df['year'] = df['pickup_datetime'].dt.year
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in km
+    phi1, phi2 = np.radians(lat1), np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlambda = np.radians(lon2 - lon1)
+    a = np.sin(dphi/2)**2 + np.cos(phi1)*np.cos(phi2)*np.sin(dlambda/2)**2
+    return 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+df['distance_km'] = haversine(df['pickup_latitude'], df['pickup_longitude'],['dropoff_latitude'], df['dropoff_longitude'])
+
+df = df[(df['distance_km'] > 0) & (df['distance_km'] < 50)]
+
+Identify Outliers
+sns.scatterplot(x='distance_km', y='fare_amount', data=df, alpha=0.3)
+plt.title("Fare vs Distance")
+plt.show()
+df = df[df['fare_amount'] < 60]
+
+
+Check Correlation
+corr = df[['fare_amount', 'distance_km', 'passenger_count', 'hour', 'month']].corr()
+sns.heatmap(corr, annot=True, cmap='coolwarm')
+plt.title("Correlation Heatmap")
+plt.show()
+
+Feature Selection
+X = df[['distance_km', 'passenger_count', 'hour', 'month']]
+y = df['fare_amount']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+Feature Scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+
+Implement Models
+lr = LinearRegression()
+lr.fit(X_train_scaled, y_train)
+y_pred_lr = lr.predict(X_test_scaled)
+
+rf = RandomForestRegressor(n_estimators=100, random_state=42)
+rf.fit(X_train, y_train)
+y_pred_rf = rf.predict(X_test)
+
+
+Evaluate Models
+def evaluate_model(y_true, y_pred, model_name):
+    r2 = r2_score(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    print(f"\n {model_name} Performance:")
+    print(f"R² Score: {r2:.3f}")
+    print(f"RMSE: {rmse:.3f}")
+    print(f"MAE: {mae:.3f}")
+
+evaluate_model(y_test, y_pred_lr, "Linear Regression")
+evaluate_model(y_test, y_pred_rf, "Random Forest Regression")
+
